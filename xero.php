@@ -41,7 +41,7 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 
-	
+
 
 */
 
@@ -70,7 +70,7 @@ class Xero {
 		throw new XeroException('Public cert does not exist: ' . $this->public_cert);
 		if(!file_exists($this->private_key))
 		throw new XeroException('Private key does not exist: ' . $this->private_key);
-		
+
 		$this->consumer = new OAuthConsumer($this->key, $this->secret);
 		$this->token = new OAuthToken($this->key, $this->secret);
 		$this->signature_method  = new OAuthSignatureMethod_Xero($this->public_cert, $this->private_key);
@@ -79,9 +79,9 @@ class Xero {
 
 	public function __call($name, $arguments) {
 		$name = strtolower($name);
-		$valid_methods = array('accounts','contacts','creditnotes','currencies','invoices','organisation','payments','taxrates','trackingcategories','items','banktransactions','brandingthemes');
-		$valid_post_methods = array('banktransactions','contacts','creditnotes','expenseclaims','invoices','items','manualjournals','receipts');
-		$valid_put_methods = array('payments');
+		$valid_methods = array('accounts','banktransactions','brandingthemes','contacts','creditnotes','currencies','employees','expenseclaims','invoices','items','journals','manualjournals','organisation','payments','receipts','taxrates','trackingcategories','users');
+		$valid_post_methods = array('banktransactions','contacts','creditnotes','employees','expenseclaims','invoices','items','manualjournals','receipts','banktransactions');
+		$valid_put_methods = array('banktransactions','contacts','creditnotes','employees','expenseclaims','invoices','items','manualjournals','payments','receipts');
 		$valid_get_methods = array('accounts','banktransactions','brandingthemes','contacts','creditnotes','currencies','employees','expenseclaims','invoices','items','journals','manualjournals','organisation','payments','receipts','taxrates','trackingcategories','users');
 		$methods_map = array(
 			'accounts' => 'Accounts',
@@ -102,19 +102,20 @@ class Xero {
 			'taxrates' => 'TaxRates',
 			'trackingcategories' => 'TrackingCategories',
 			'users' => 'Users'
-			
+
 		);
 		if ( !in_array($name,$valid_methods) ) {
 			throw new XeroException('The selected method does not exist. Please use one of the following methods: '.implode(', ',$methods_map));
 		}
 		if ( (count($arguments) == 0) || ( is_string($arguments[0]) ) || ( is_numeric($arguments[0]) ) || ( $arguments[0] === false ) ) {
+			$where = false;
 			//it's a GET request
 			if ( !in_array($name, $valid_get_methods) ) {
 				return false;
 			}
 			$filterid = ( count($arguments) > 0 ) ? strip_tags(strval($arguments[0])) : false;
-			if($arguments[1]!=false) $modified_after = ( count($arguments) > 1 ) ? str_replace( 'X','T', date( 'Y-m-dXH:i:s', strtotime($arguments[1])) ) : false;
-			if($arguments[2]!=false) $where = ( count($arguments) > 2 ) ? $arguments[2] : false;
+			if(isset($arguments[1])) $modified_after = ( count($arguments) > 1 ) ? str_replace( 'X','T', date( 'Y-m-dXH:i:s', strtotime($arguments[1])) ) : false;
+			if(isset($arguments[2])) $where = ( count($arguments) > 2 ) ? $arguments[2] : false;
 			if ( is_array($where) && (count($where) > 0) ) {
 				$temp_where = '';
 				foreach ( $where as $wf => $wv ) {
@@ -124,14 +125,14 @@ class Xero {
 						if ( is_bool($wv[1]) ) {
 							$wv = ($wv[1]) ? rawurlencode($wv[0]) . "true" : rawurlencode($wv[0]) . "false" ;
 						} else {
-							$wv = rawurlencode($wv[0]) . "%22{$wv[1]}%22" ;
+							$wv = rawurlencode($wv[0]) . $wv[1];
 						}
 					} else {
 						$wv = "%3d%3d%22$wv%22";
 					}
-					$temp_where .= "%26%26$wf$wv";
+					$temp_where .= " AND $wf$wv";
 				}
-				$where = strip_tags(substr($temp_where, 6));
+				$where = strip_tags(substr($temp_where, 5));
 			} else {
 				$where = strip_tags(strval($where));
 			}
@@ -148,6 +149,7 @@ class Xero {
 			if ( $order ) {
 				$xero_url .= "&order=$order";
 			}
+
 			$req  = OAuthRequest::from_consumer_and_token( $this->consumer, $this->token, 'GET',$xero_url);
 			$req->sign_request($this->signature_method , $this->consumer, $this->token);
 			$ch = curl_init();
@@ -168,9 +170,9 @@ class Xero {
 			curl_close($ch);
 			if ( $acceptHeader=='pdf' ) {
 				return $temp_xero_response;
-				
+
 			}
-			
+
 			try {
 			if(@simplexml_load_string( $temp_xero_response )==false){
 				throw new XeroException($temp_xero_response);
@@ -179,12 +181,12 @@ class Xero {
 				$xero_xml = simplexml_load_string( $temp_xero_response );
 				}
 				}
-			
+
 			catch (XeroException $e)
 				  {
 				  return $e->getMessage() . "<br/>";
 				  }
-			
+
 
 			if ( $this->format == 'xml' && isset($xero_xml) ) {
 				return $xero_xml;
@@ -239,13 +241,13 @@ class Xero {
 				$xero_xml = simplexml_load_string( $xero_response );
 				}
 				}
-			
+
 			catch (XeroException $e)
 				  {
 				  //display custom message
 				  return $e->getMessage() . "<br/>";
 				  }
-	
+
 			curl_close($ch);
 			if (!isset($xero_xml) ) {
 				return false;
@@ -258,12 +260,19 @@ class Xero {
 		} else {
 			return false;
 		}
-		
-		
+
+
 	}
 
 	public function __get($name) {
 		return $this->$name();
+	}
+
+	public function verify() {
+		if (!isset($this->consumer) || !isset($this->token) || !isset($this->signature_method)) {
+			return false;
+		}
+		return true;
 	}
 
 }
@@ -1204,7 +1213,8 @@ class ArrayToXML
             } else {
 
                 // add single node.
-                $xml->$key = $value;
+                $value = htmlentities( $value, ENT_NOQUOTES, 'UTF-8', FALSE );
+                $xml->addChild( $key, $value );
             }
         }
 
@@ -1283,6 +1293,6 @@ class XeroApiException extends XeroException {
 	{
 		return preg_match('/^<ApiException.*>/', $xml);
 	}
-	
+
 
 }
